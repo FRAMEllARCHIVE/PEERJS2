@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>PeerJS - 4 Person Chat</title>
+    <title>PeerJS - Dynamic 4 Person Chat</title>
     <style>
         body {
             font-family: Arial, sans-serif;
@@ -45,7 +45,7 @@
     </style>
 </head>
 <body>
-    <h1>PeerJS 4 Person Chat</h1>
+    <h1>PeerJS Dynamic Chat</h1>
     <div id="messages"></div>
     <input type="text" id="messageInput" placeholder="Type a message...">
     <button id="sendMessageButton">Send</button>
@@ -71,22 +71,40 @@
             conn.on('data', (data) => {
                 displayMessage(data.message, conn.peer);
             });
+            conn.on('close', () => {
+                const index = connections.indexOf(conn);
+                if (index !== -1) {
+                    connections.splice(index, 1);
+                }
+                displayMessage('A peer has disconnected.', conn.peer);
+            });
         });
 
         peer.on('open', (id) => {
             console.log('My peer ID is:', id);
-            const peerIds = ['peerID1', 'peerID2', 'peerID3'];
-            peerIds.forEach(peerId => {
-                const conn = peer.connect(peerId);
-                connections.push(conn);
-                conn.on('open', () => {
-                    console.log('Connected to', peerId);
-                });
-                conn.on('data', (data) => {
-                    displayMessage(data.message, peerId);
-                });
-            });
         });
+
+        function connectToPeer(peerId) {
+            const conn = peer.connect(peerId);
+            connections.push(conn);
+            conn.on('open', () => {
+                console.log('Connected to', peerId);
+            });
+            conn.on('data', (data) => {
+                displayMessage(data.message, peerId);
+            });
+            conn.on('close', () => {
+                const index = connections.indexOf(conn);
+                if (index !== -1) {
+                    connections.splice(index, 1);
+                }
+                displayMessage('A peer has disconnected.', peerId);
+            });
+        }
+
+        function getAllConnectedPeers() {
+            return peer.listAllPeers();
+        }
 
         sendMessageButton.addEventListener('click', () => {
             const message = messageInput.value;
@@ -104,6 +122,24 @@
                 sendMessageButton.click();
             }
         });
+
+        // Example of dynamically connecting to peers (call this function to add new peers)
+        // You can trigger it manually or set up a method to let users input peer IDs to connect to
+        function connectToNewPeer(peerId) {
+            connectToPeer(peerId);
+        }
+
+        // Automatically fetch and connect to peers after initial connection
+        peer.on('open', (id) => {
+            setInterval(() => {
+                getAllConnectedPeers().forEach(peerId => {
+                    if (!connections.some(conn => conn.peer === peerId)) {
+                        connectToNewPeer(peerId);
+                    }
+                });
+            }, 5000); // Check for new peers every 5 seconds
+        });
+
     </script>
 </body>
 </html>
