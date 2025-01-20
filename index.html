@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>PeerJS - Dynamic 4 Person Chat</title>
+    <title>PeerJS - 4-Person Chat (Everyone Hosts)</title>
     <style>
         body {
             font-family: Arial, sans-serif;
@@ -45,7 +45,7 @@
     </style>
 </head>
 <body>
-    <h1>PeerJS Dynamic Chat</h1>
+    <h1>PeerJS 4-Person Dynamic Chat (Everyone Hosts)</h1>
     <div id="messages"></div>
     <input type="text" id="messageInput" placeholder="Type a message...">
     <button id="sendMessageButton">Send</button>
@@ -58,12 +58,35 @@
         const messageInput = document.getElementById('messageInput');
         const sendMessageButton = document.getElementById('sendMessageButton');
 
+        let peerIDCounter = 1;  // Start from peerID1
+        const assignedPeerIDs = [];  // Array to keep track of assigned peer IDs
+        const maxPeers = 4;  // Maximum number of connected peers at any time
+        let currentPeers = [];  // Keeps track of the current 4 connected peers
+
         function displayMessage(message, sender) {
             const msgElement = document.createElement('div');
             msgElement.classList.add('message');
             msgElement.textContent = `${sender}: ${message}`;
             messageBox.appendChild(msgElement);
             messageBox.scrollTop = messageBox.scrollHeight;
+        }
+
+        function getNextPeerID() {
+            let newPeerID = `peerID${peerIDCounter}`;
+            while (assignedPeerIDs.includes(newPeerID)) {
+                peerIDCounter++;
+                newPeerID = `peerID${peerIDCounter}`;
+            }
+            assignedPeerIDs.push(newPeerID);
+            peerIDCounter++;  // Increment counter for the next peer
+            return newPeerID;
+        }
+
+        function connectToAllPeers() {
+            const currentPeerIDs = currentPeers.map(peer => peer.peerID);
+            currentPeers.forEach(peer => {
+                peer.conn.send({ message: 'You are now connected to the group!', peers: currentPeerIDs });
+            });
         }
 
         peer.on('connection', (conn) => {
@@ -81,30 +104,24 @@
         });
 
         peer.on('open', (id) => {
-            console.log('My peer ID is:', id);
-        });
+            const newPeerID = getNextPeerID();  // Generate the next available peer ID
+            console.log(`Your peer ID: ${newPeerID}`);
 
-        function connectToPeer(peerId) {
-            const conn = peer.connect(peerId);
-            connections.push(conn);
-            conn.on('open', () => {
-                console.log('Connected to', peerId);
-            });
-            conn.on('data', (data) => {
-                displayMessage(data.message, peerId);
-            });
-            conn.on('close', () => {
-                const index = connections.indexOf(conn);
-                if (index !== -1) {
-                    connections.splice(index, 1);
+            // If we haven't reached 4 peers yet, try connecting to others
+            if (currentPeers.length < maxPeers) {
+                currentPeers.push({ peerID: newPeerID, conn: peer });
+                console.log(`${newPeerID} joined the group`);
+
+                if (currentPeers.length === maxPeers) {
+                    console.log('Session is full, establishing connections between peers.');
+                    connectToAllPeers(); // Share peer list with all peers
                 }
-                displayMessage('A peer has disconnected.', peerId);
-            });
-        }
-
-        function getAllConnectedPeers() {
-            return peer.listAllPeers();
-        }
+            } else {
+                // If the session is full, disconnect and notify the user
+                displayMessage('The session is full. Please try again later.', 'Server');
+                peer.disconnect();
+            }
+        });
 
         sendMessageButton.addEventListener('click', () => {
             const message = messageInput.value;
@@ -123,22 +140,36 @@
             }
         });
 
-        // Example of dynamically connecting to peers (call this function to add new peers)
-        // You can trigger it manually or set up a method to let users input peer IDs to connect to
-        function connectToNewPeer(peerId) {
-            connectToPeer(peerId);
-        }
-
-        // Automatically fetch and connect to peers after initial connection
+        // Peer-to-peer connection setup
         peer.on('open', (id) => {
             setInterval(() => {
-                getAllConnectedPeers().forEach(peerId => {
-                    if (!connections.some(conn => conn.peer === peerId)) {
-                        connectToNewPeer(peerId);
-                    }
-                });
-            }, 5000); // Check for new peers every 5 seconds
+                // Attempt to connect to other peers if there are fewer than 4 peers
+                if (currentPeers.length < maxPeers) {
+                    // Dynamically try to connect to available peers
+                    const otherPeers = currentPeers.filter(peer => peer.peerID !== id);
+                    otherPeers.forEach(peer => {
+                        connectToPeer(peer.peerID);
+                    });
+                }
+            }, 5000);  // Check for new peers every 5 seconds
         });
+
+        function connectToPeer(peerId) {
+            const conn = peer.connect(peerId);
+            conn.on('open', () => {
+                console.log(`Connected to peer: ${peerId}`);
+            });
+            conn.on('data', (data) => {
+                displayMessage(data.message, peerId);
+            });
+            conn.on('close', () => {
+                const index = currentPeers.findIndex(peer => peer.peerID === peerId);
+                if (index !== -1) {
+                    currentPeers.splice(index, 1);
+                }
+                displayMessage(`${peerId} has disconnected.`, 'Server');
+            });
+        }
 
     </script>
 </body>
