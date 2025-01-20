@@ -1,1 +1,109 @@
-test
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PeerJS - 4 Person Chat</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 20px;
+        }
+
+        #messages {
+            border: 1px solid #ccc;
+            padding: 10px;
+            width: 400px;
+            height: 300px;
+            overflow-y: scroll;
+            margin-bottom: 10px;
+        }
+
+        input {
+            padding: 10px;
+            width: 300px;
+        }
+
+        button {
+            padding: 10px;
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            cursor: pointer;
+        }
+
+        button:hover {
+            background-color: #45a049;
+        }
+
+        .message {
+            margin-bottom: 10px;
+        }
+    </style>
+</head>
+<body>
+    <h1>PeerJS 4 Person Chat</h1>
+    <div id="messages"></div>
+    <input type="text" id="messageInput" placeholder="Type a message...">
+    <button id="sendMessageButton">Send</button>
+
+    <script src="https://cdn.peerjs.com/1.3.2/peerjs.min.js"></script>
+    <script>
+        const peer = new Peer();
+        const connections = [];
+        const messageBox = document.getElementById('messages');
+        const messageInput = document.getElementById('messageInput');
+        const sendMessageButton = document.getElementById('sendMessageButton');
+
+        function displayMessage(message, sender) {
+            const msgElement = document.createElement('div');
+            msgElement.classList.add('message');
+            msgElement.textContent = `${sender}: ${message}`;
+            messageBox.appendChild(msgElement);
+            messageBox.scrollTop = messageBox.scrollHeight;
+        }
+
+        peer.on('connection', (conn) => {
+            connections.push(conn);
+            conn.on('data', (data) => {
+                displayMessage(data.message, conn.peer);
+            });
+        });
+
+        peer.on('open', (id) => {
+            console.log('My peer ID is:', id);
+            const peerIds = ['peerID1', 'peerID2', 'peerID3'];
+            peerIds.forEach(peerId => {
+                const conn = peer.connect(peerId);
+                connections.push(conn);
+                conn.on('open', () => {
+                    console.log('Connected to', peerId);
+                });
+                conn.on('data', (data) => {
+                    displayMessage(data.message, peerId);
+                });
+            });
+        });
+
+        sendMessageButton.addEventListener('click', () => {
+            const message = messageInput.value;
+            if (message.trim()) {
+                connections.forEach(conn => {
+                    conn.send({ message: message });
+                });
+                displayMessage(message, 'You');
+                messageInput.value = '';
+            }
+        });
+
+        messageInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                sendMessageButton.click();
+            }
+        });
+    </script>
+</body>
+</html>
