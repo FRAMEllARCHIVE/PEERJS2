@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PeerJS Host Session</title>
+    <script src="https://cdn.jsdelivr.net/npm/peerjs@1.4.7/dist/peerjs.min.js"></script>
+</head>
+<body>
+    <h1>PeerJS Host Session</h1>
+    <div>
+        <p>Your Peer ID: <span id="peer-id"></span></p>
+        <p>Connected Peers: <span id="connected-peers">0</span>/3</p>
+    </div>
+    <script>
+        let peeridno = 0;
+        let peerId = `ponderstatichost${peeridno}`;
+
+        const maxConnections = 3;
+        const connections = new Map();
+
+        const peer = new Peer(peerId, {
+            debug: 2
+        });
+
+        peer.on('open', function (id) {
+            console.log(`Peer connected with ID: ${id}`);
+            document.getElementById('peer-id').textContent = id;
+        });
+
+        peer.on('connection', function (conn) {
+            if (connections.has(conn.peer)) {
+                console.log(`Connection rejected: Already connected to ${conn.peer}`);
+                conn.close();
+                return;
+            }
+
+            if (connections.size >= maxConnections) {
+                console.log('Connection rejected: Max unique connections reached');
+                conn.close();
+                return;
+            }
+
+            connections.set(conn.peer, conn);
+            document.getElementById('connected-peers').textContent = connections.size;
+
+            console.log(`New connection from: ${conn.peer}`);
+            conn.on('open', function () {
+                conn.send('hello');
+                console.log(`Sent "hello" to: ${conn.peer}`);
+            });
+
+            conn.on('data', function (data) {
+                console.log(`Received data from ${conn.peer}:`, data);
+            });
+
+            conn.on('close', function () {
+                console.log(`Connection with ${conn.peer} closed`);
+                connections.delete(conn.peer);
+                document.getElementById('connected-peers').textContent = connections.size;
+            });
+        });
+
+        peer.on('error', function (err) {
+            console.error(`An error occurred: ${err}`);
+        });
+    </script>
+</body>
+</html>
