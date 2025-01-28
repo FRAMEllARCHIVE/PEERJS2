@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PeerJS</title>
+    <script src="https://cdn.jsdelivr.net/npm/peerjs@1.4.7/dist/peerjs.min.js"></script>
+    <style>
+        body { font-family: Arial, sans-serif; }
+        #connections { margin-top: 20px; }
+        #connections ul { list-style-type: none; padding: 0; }
+        #connections li { margin: 5px 0; }
+    </style>
+</head>
+<body>
+    <h1>PeerJS</h1>
+    <div>
+        <p>Your Peer ID: <span id="peer-id"></span></p>
+        <p>Connected Peers: <span id="connected-peers">0</span>/3</p>
+    </div>
+    <div id="connections">
+        <h2>Active Connections</h2>
+        <ul id="peer-list"></ul>
+    </div>
+    <button id="ping-button">Ping All</button>
+
+    <script>
+        let peeridno = 0;
+        let ExistingPeerIDs = 0;
+        let peer = null;
+        const maxConnections = 3;
+        const connections = new Map();
+
+        function initializePeer() {
+            const peerId = `ponderstatichost${peeridno}`;
+            peer = new Peer(peerId, { debug: 2 });
+
+            peer.on('open', function (id) {
+                document.getElementById('peer-id').textContent = id;
+                tryToConnectToPeers(id);
+                propagateConnections();
+            });
+
+            peer.on('connection', function (conn) {
+                if (conn.peer === peer.id) {
+                    conn.close();
+                    return;
+                }
+
+                if (connections.has(conn.peer)) {
+                    conn.close();
+                    return;
+                }
+
+                if (connections.size >= maxConnections) {
+                    conn.close();
+                    return;
+                }
+
+                connections.set(conn.peer, conn);
+                updateUI();
+                propagateConnections();
+
+                conn.on('open', function () {
+                    conn.send({
+                        type: 'initial-connections',
+                        data: Array.from(connections.keys())
+                    });
+                    conn.send({
+                        type: 'connect-to-others',
+                        peers: Array.from(connections.keys())
+                    });
+                });
+
+                conn.on('data', handleIncomingData);
+
+                conn.on('close', function () {
+                    connections.delete(conn.peer);
+                    updateUI();
+                    propagateConnections();
+                });
+            });
+
+            peer.on('error', function (err) {
+                if (err.type === 'unavailable-id') {
+                    peeridno++;
+                    initializePeer();
+                }
+            });
+        }
+
+        function tryToConnectToPeers(currentPeerId) {
+            const targetPeerId = `ponderstatichost${ExistingPeerIDs}`;
+
+            if (currentPeerId === targetPeerId) {
+                ExistingPeerIDs++;
+                tryToConnectToPeers(currentPeerId);
+                return;
+            }
+
+            const conn = peer.connect(targetPeerId);
+
+            conn.on('open', function () {
+                connections.set(targetPeerId, conn);
+                updateUI();
+                propagateConnections();
+
+                conn.send({
+                    type: 'initial-connections',
+                    data: Array.from(connections.keys())
+                });
+
+                conn.send({
+                    type: 'connect-to-others',
+                    peers: Array.from(connections.keys())
+                });
+            });
+
+            conn.on('error', function () {
+                ExistingPeerIDs++;
+                tryToConnectToPeers(currentPeerId);
+            });
+
+            conn.on('close', function () {
+                connections.delete(targetPeerId);
+                updateUI();
+                propagateConnections();
+            });
+
+            conn.on('data', handleIncomingData);
+        }
+
+        function handleIncomingData(data) {
+            if (data.type === 'connect-to-others') {
+                data.peers.forEach(peerId => {
+                    if (!connections.has(peerId) && peerId !== peer.id) {
+                        const newConn = peer.connect(peerId);
+
+                        newConn.on('open', function () {
+                            connections.set(peerId, newConn);
+                            updateUI();
+                            propagateConnections();
+                            newConn.send(`Hello from ${peer.id}`);
+                        });
+
+                        newConn.on('error', function (err) {
+                            console.error(err);
+                        });
+                    }
+                });
+            } else if (data.type === 'initial-connections') {
+                console.log(`Received connection list from ${data.peer}:`, data.data);
+                data.data.forEach(peerId => {
+                    if (!connections.has(peerId) && peerId !== peer.id) {
+                        const newConn = peer.connect(peerId);
+
+                        newConn.on('open', function () {
+                            connections.set(peerId, newConn);
+                            updateUI();
+                            propagateConnections();
+                            newConn.send(`Hello from ${peer.id}`);
+                        });
+
+                        newConn.on('error', function (err) {
+                            console.error(err);
+                        });
+                    }
+                });
+            } else if (data.type === 'ping') {
+                console.log(`Ping received: ${data.message}`);
+            }
+        }
+
+        function propagateConnections() {
+            const currentConnections = Array.from(connections.keys());
+            connections.forEach((conn) => {
+                conn.send({
+                    type: 'connect-to-others',
+                    peers: currentConnections,
+                });
+            });
+        }
+
+        function updateUI() {
+            const peerList = document.getElementById('peer-list');
+            peerList.innerHTML = '';
+            connections.forEach((_, peerId) => {
+                const li = document.createElement('li');
+                li.textContent = peerId;
+                peerList.appendChild(li);
+            });
+            document.getElementById('connected-peers').textContent = connections.size;
+        }
+
+        document.getElementById('ping-button').addEventListener('click', () => {
+            connections.forEach((conn, peerId) => {
+                conn.send({ type: 'ping', message: `Ping from ${peer.id}` });
+            });
+        });
+
+        initializePeer();
+    </script>
+</body>
+</html>
