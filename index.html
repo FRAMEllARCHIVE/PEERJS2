@@ -40,10 +40,10 @@
                 console.log(`Peer connected with ID: ${id}`);
                 document.getElementById('peer-id').textContent = id;
                 tryToConnectToPeers(id);
+                propagateConnections(); // Ensure connections are propagated after initialization
             });
 
             peer.on('connection', function (conn) {
-
                 if (conn.peer === peer.id) {
                     console.log(`Connection rejected: Attempt to connect to self (${conn.peer})`);
                     conn.close();
@@ -64,9 +64,9 @@
 
                 connections.set(conn.peer, conn);
                 updateUI();
+                propagateConnections(); // Propagate connections after new incoming connection
 
                 console.log(`New connection from: ${conn.peer}`);
-              
                 conn.on('open', function () {
                     conn.send({
                         type: 'initial-connections',
@@ -78,24 +78,22 @@
                 conn.on('data', function (data) {
                     console.log(`Received data from ${conn.peer}:`, data);
                     if (data.type === 'connect-to-others') {
-                      
-data.peers.forEach(peerId => {
-    if (!connections.has(peerId) && peerId !== peer.id) {
-        const newConn = peer.connect(peerId);
+                        data.peers.forEach(peerId => {
+                            if (!connections.has(peerId) && peerId !== peer.id) {
+                                const newConn = peer.connect(peerId);
 
-        newConn.on('open', function () {
-            connections.set(peerId, newConn);
-            updateUI();
-            newConn.send(`Hello from ${peer.id}`);
-        });
+                                newConn.on('open', function () {
+                                    connections.set(peerId, newConn);
+                                    updateUI();
+                                    propagateConnections(); // Update connections after successful outgoing connection
+                                    newConn.send(`Hello from ${peer.id}`);
+                                });
 
-        newConn.on('error', function (err) {
-            console.error(`Failed to connect to ${peerId}:`, err);
-        });
-    }
-});
-
-                      
+                                newConn.on('error', function (err) {
+                                    console.error(`Failed to connect to ${peerId}:`, err);
+                                });
+                            }
+                        });
                     } else if (data.type === 'ping') {
                         console.log(`Ping received from ${conn.peer}: ${data.message}`);
                     }
@@ -105,6 +103,7 @@ data.peers.forEach(peerId => {
                     console.log(`Connection with ${conn.peer} closed`);
                     connections.delete(conn.peer);
                     updateUI();
+                    propagateConnections(); // Notify peers after connection is closed
                 });
             });
 
@@ -133,24 +132,22 @@ data.peers.forEach(peerId => {
             console.log(`Attempting to connect to: ${targetPeerId}`);
             const conn = peer.connect(targetPeerId);
 
-conn.on('open', function () {
-    console.log(`Connected to: ${targetPeerId}`);
-    connections.set(targetPeerId, conn);
-    updateUI();
+            conn.on('open', function () {
+                console.log(`Connected to: ${targetPeerId}`);
+                connections.set(targetPeerId, conn);
+                updateUI();
+                propagateConnections(); // Propagate connections after successful connection
 
-    conn.send({
-        type: 'initial-connections',
-        data: Array.from(connections.keys())
-    });
+                conn.send({
+                    type: 'initial-connections',
+                    data: Array.from(connections.keys())
+                });
 
-    conn.send({
-        type: 'connect-to-others',
-        peers: Array.from(connections.keys())
-    });
-
-    propagateConnections();
-});
-
+                conn.send({
+                    type: 'connect-to-others',
+                    peers: Array.from(connections.keys())
+                });
+            });
 
             conn.on('error', function () {
                 console.error(`Failed to connect to: ${targetPeerId}`);
@@ -162,20 +159,20 @@ conn.on('open', function () {
                 console.log(`Connection with ${targetPeerId} closed`);
                 connections.delete(targetPeerId);
                 updateUI();
+                propagateConnections(); // Notify peers after disconnection
             });
         }
 
-function propagateConnections() {
-    const currentConnections = Array.from(connections.keys());
-    connections.forEach((conn) => {
-        conn.send({
-            type: 'connect-to-others',
-            peers: currentConnections,
-        });
-    });
-}
+        function propagateConnections() {
+            const currentConnections = Array.from(connections.keys());
+            connections.forEach((conn) => {
+                conn.send({
+                    type: 'connect-to-others',
+                    peers: currentConnections,
+                });
+            });
+        }
 
-      
         function updateUI() {
             const peerList = document.getElementById('peer-list');
             peerList.innerHTML = '';
@@ -187,7 +184,6 @@ function propagateConnections() {
             document.getElementById('connected-peers').textContent = connections.size;
         }
 
-    
         document.getElementById('ping-button').addEventListener('click', () => {
             connections.forEach((conn, peerId) => {
                 conn.send({ type: 'ping', message: `Ping from ${peer.id}` });
