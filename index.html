@@ -3,67 +3,138 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>PeerJS Host Session</title>
+    <title>PeerJS</title>
     <script src="https://cdn.jsdelivr.net/npm/peerjs@1.4.7/dist/peerjs.min.js"></script>
 </head>
 <body>
-    <h1>PeerJS Host Session</h1>
+    <h1>PeerJS</h1>
     <div>
         <p>Your Peer ID: <span id="peer-id"></span></p>
         <p>Connected Peers: <span id="connected-peers">0</span>/3</p>
     </div>
     <script>
         let peeridno = 0;
-        let peerId = `ponderstatichost${peeridno}`;
-
+        let ExistingPeerIDs = 0;
+        let peer = null;
         const maxConnections = 3;
         const connections = new Map();
 
-        const peer = new Peer(peerId, {
-            debug: 2
-        });
+        function initializePeer() {
+            const peerId = `ponderstatichost${peeridno}`;
 
-        peer.on('open', function (id) {
-            console.log(`Peer connected with ID: ${id}`);
-            document.getElementById('peer-id').textContent = id;
-        });
-
-        peer.on('connection', function (conn) {
-            if (connections.has(conn.peer)) {
-                console.log(`Connection rejected: Already connected to ${conn.peer}`);
-                conn.close();
-                return;
-            }
-
-            if (connections.size >= maxConnections) {
-                console.log('Connection rejected: Max unique connections reached');
-                conn.close();
-                return;
-            }
-
-            connections.set(conn.peer, conn);
-            document.getElementById('connected-peers').textContent = connections.size;
-
-            console.log(`New connection from: ${conn.peer}`);
-            conn.on('open', function () {
-                conn.send('hello');
-                console.log(`Sent "hello" to: ${conn.peer}`);
+            peer = new Peer(peerId, {
+                debug: 2
             });
 
-            conn.on('data', function (data) {
-                console.log(`Received data from ${conn.peer}:`, data);
+            peer.on('open', function (id) {
+                console.log(`Peer connected with ID: ${id}`);
+                document.getElementById('peer-id').textContent = id;
+                tryToConnectToPeers(id);
+            });
+
+            peer.on('connection', function (conn) {
+                if (connections.has(conn.peer)) {
+                    console.log(`Connection rejected: Already connected to ${conn.peer}`);
+                    conn.close();
+                    return;
+                }
+
+                if (connections.size >= maxConnections) {
+                    console.log('Connection rejected: Max unique connections reached');
+                    conn.close();
+                    return;
+                }
+
+                connections.set(conn.peer, conn);
+                document.getElementById('connected-peers').textContent = connections.size;
+
+                console.log(`New connection from: ${conn.peer}`);
+                conn.on('open', function () {
+                    conn.send({
+                        type: 'initial-connections',
+                        data: Array.from(connections.keys())
+                    });
+                    console.log(`Sent current connections to ${conn.peer}:`, Array.from(connections.keys()));
+                });
+
+                conn.on('data', function (data) {
+                    console.log(`Received data from ${conn.peer}:`, data);
+                    if (data.type === 'connect-to-others') {
+                        data.peers.forEach(peerId => {
+                            if (!connections.has(peerId)) {
+                                const newConn = peer.connect(peerId);
+                                newConn.on('open', function () {
+                                    connections.set(peerId, newConn);
+                                    document.getElementById('connected-peers').textContent = connections.size;
+                                    newConn.send(`Hello from ${peer.id}`);
+                                });
+                            }
+                        });
+                    }
+                });
+
+                conn.on('close', function () {
+                    console.log(`Connection with ${conn.peer} closed`);
+                    connections.delete(conn.peer);
+                    document.getElementById('connected-peers').textContent = connections.size;
+                });
+            });
+
+            peer.on('error', function (err) {
+                console.error(`An error occurred: ${err.type}`);
+                if (err.type === 'unavailable-id') {
+                    console.log(`Peer ID ${peerId} is already in use. Retrying with a new ID...`);
+                    peeridno++;
+                    initializePeer();
+                } else {
+                    console.error(`Unhandled error: ${err}`);
+                }
+            });
+        }
+
+        function tryToConnectToPeers(currentPeerId) {
+            const targetPeerId = `ponderstatichost${ExistingPeerIDs}`;
+
+            if (currentPeerId === targetPeerId) {
+                console.log(`Skipping connection to self: ${targetPeerId}`);
+                ExistingPeerIDs++;
+                tryToConnectToPeers(currentPeerId);
+                return;
+            }
+
+            console.log(`Attempting to connect to: ${targetPeerId}`);
+            const conn = peer.connect(targetPeerId);
+
+            conn.on('open', function () {
+                console.log(`Connected to: ${targetPeerId}`);
+                connections.set(targetPeerId, conn);
+                document.getElementById('connected-peers').textContent = connections.size;
+
+                conn.send({
+                    type: 'initial-connections',
+                    data: Array.from(connections.keys())
+                });
+
+                conn.send({
+                    type: 'connect-to-others',
+                    peers: Array.from(connections.keys())
+                });
+            });
+
+            conn.on('error', function () {
+                console.error(`Failed to connect to: ${targetPeerId}`);
+                ExistingPeerIDs++;
+                tryToConnectToPeers(currentPeerId);
             });
 
             conn.on('close', function () {
-                console.log(`Connection with ${conn.peer} closed`);
-                connections.delete(conn.peer);
+                console.log(`Connection with ${targetPeerId} closed`);
+                connections.delete(targetPeerId);
                 document.getElementById('connected-peers').textContent = connections.size;
             });
-        });
+        }
 
-        peer.on('error', function (err) {
-            console.error(`An error occurred: ${err}`);
-        });
+        initializePeer();
     </script>
 </body>
 </html>
