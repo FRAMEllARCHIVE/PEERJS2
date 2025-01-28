@@ -127,7 +127,6 @@
                 propagateConnections();
             });
 
-            // Add the same message handler for this new connection
             conn.on('data', handleIncomingData);
         }
 
