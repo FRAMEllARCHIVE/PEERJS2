@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PeerJS</title>
+    <script src="https://cdn.jsdelivr.net/npm/peerjs@1.4.7/dist/peerjs.min.js"></script>
+    <style>
+        body { font-family: Arial, sans-serif; }
+        #connections { margin-top: 20px; }
+        #connections ul { list-style-type: none; padding: 0; }
+        #connections li { margin: 5px 0; }
+    </style>
+</head>
+<body>
+    <h1>PeerJS</h1>
+    <div>
+        <p>Your Peer ID: <span id="peer-id"></span></p>
+        <p>Connected Peers: <span id="connected-peers">0</span>/3</p>
+    </div>
+    <div id="connections">
+        <h2>Active Connections</h2>
+        <ul id="peer-list"></ul>
+    </div>
+    <button id="ping-button">Ping All</button>
+
+    <script>
+        let peeridno = 0;
+        let ExistingPeerIDs = 0;
+        let peer = null;
+        const maxConnections = 3;
+        const connections = new Map();
+
+        function initializePeer() {
+            const peerId = `ponderstatichost${peeridno}`;
+
+            peer = new Peer(peerId, { debug: 2 });
+
+            peer.on('open', function (id) {
+                console.log(`Peer connected with ID: ${id}`);
+                document.getElementById('peer-id').textContent = id;
+                tryToConnectToPeers(id);
+            });
+
+            peer.on('connection', function (conn) {
+
+                if (conn.peer === peer.id) {
+                    console.log(`Connection rejected: Attempt to connect to self (${conn.peer})`);
+                    conn.close();
+                    return;
+                }
+
+                if (connections.has(conn.peer)) {
+                    console.log(`Connection rejected: Already connected to ${conn.peer}`);
+                    conn.close();
+                    return;
+                }
+
+                if (connections.size >= maxConnections) {
+                    console.log('Connection rejected: Max unique connections reached');
+                    conn.close();
+                    return;
+                }
+
+                connections.set(conn.peer, conn);
+                updateUI();
+
+                console.log(`New connection from: ${conn.peer}`);
+              
+                conn.on('open', function () {
+                    conn.send({
+                        type: 'initial-connections',
+                        data: Array.from(connections.keys())
+                    });
+                    console.log(`Sent current connections to ${conn.peer}:`, Array.from(connections.keys()));
+                });
+
+                conn.on('data', function (data) {
+                    console.log(`Received data from ${conn.peer}:`, data);
+                    if (data.type === 'connect-to-others') {
+                      
+data.peers.forEach(peerId => {
+    if (!connections.has(peerId) && peerId !== peer.id) {
+        const newConn = peer.connect(peerId);
+
+        newConn.on('open', function () {
+            connections.set(peerId, newConn);
+            updateUI();
+            newConn.send(`Hello from ${peer.id}`);
+        });
+
+        newConn.on('error', function (err) {
+            console.error(`Failed to connect to ${peerId}:`, err);
+        });
+    }
+});
+
+                      
+                    } else if (data.type === 'ping') {
+                        console.log(`Ping received from ${conn.peer}: ${data.message}`);
+                    }
+                });
+
+                conn.on('close', function () {
+                    console.log(`Connection with ${conn.peer} closed`);
+                    connections.delete(conn.peer);
+                    updateUI();
+                });
+            });
+
+            peer.on('error', function (err) {
+                console.error(`An error occurred: ${err.type}`);
+                if (err.type === 'unavailable-id') {
+                    console.log(`Peer ID ${peerId} is already in use. Retrying with a new ID...`);
+                    peeridno++;
+                    initializePeer();
+                } else {
+                    console.error(`Unhandled error: ${err}`);
+                }
+            });
+        }
+
+        function tryToConnectToPeers(currentPeerId) {
+            const targetPeerId = `ponderstatichost${ExistingPeerIDs}`;
+
+            if (currentPeerId === targetPeerId) {
+                console.log(`Skipping connection to self: ${targetPeerId}`);
+                ExistingPeerIDs++;
+                tryToConnectToPeers(currentPeerId);
+                return;
+            }
+
+            console.log(`Attempting to connect to: ${targetPeerId}`);
+            const conn = peer.connect(targetPeerId);
+
+conn.on('open', function () {
+    console.log(`Connected to: ${targetPeerId}`);
+    connections.set(targetPeerId, conn);
+    updateUI();
+
+    conn.send({
+        type: 'initial-connections',
+        data: Array.from(connections.keys())
+    });
+
+    conn.send({
+        type: 'connect-to-others',
+        peers: Array.from(connections.keys())
+    });
+
+    propagateConnections();
+});
+
+
+            conn.on('error', function () {
+                console.error(`Failed to connect to: ${targetPeerId}`);
+                ExistingPeerIDs++;
+                tryToConnectToPeers(currentPeerId);
+            });
+
+            conn.on('close', function () {
+                console.log(`Connection with ${targetPeerId} closed`);
+                connections.delete(targetPeerId);
+                updateUI();
+            });
+        }
+
+function propagateConnections() {
+    const currentConnections = Array.from(connections.keys());
+    connections.forEach((conn) => {
+        conn.send({
+            type: 'connect-to-others',
+            peers: currentConnections,
+        });
+    });
+}
+
+      
+        function updateUI() {
+            const peerList = document.getElementById('peer-list');
+            peerList.innerHTML = '';
+            connections.forEach((_, peerId) => {
+                const li = document.createElement('li');
+                li.textContent = peerId;
+                peerList.appendChild(li);
+            });
+            document.getElementById('connected-peers').textContent = connections.size;
+        }
+
+    
+        document.getElementById('ping-button').addEventListener('click', () => {
+            connections.forEach((conn, peerId) => {
+                conn.send({ type: 'ping', message: `Ping from ${peer.id}` });
+                console.log(`Ping sent to ${peerId}`);
+            });
+        });
+
+        initializePeer();
+    </script>
+</body>
+</html>
