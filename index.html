@@ -33,88 +33,58 @@
 
         function initializePeer() {
             const peerId = `ponderstatichost${peeridno}`;
-
             peer = new Peer(peerId, { debug: 2 });
 
             peer.on('open', function (id) {
-                console.log(`Peer connected with ID: ${id}`);
                 document.getElementById('peer-id').textContent = id;
                 tryToConnectToPeers(id);
-                propagateConnections(); // Ensure connections are propagated after initialization
+                propagateConnections();
             });
 
             peer.on('connection', function (conn) {
                 if (conn.peer === peer.id) {
-                    console.log(`Connection rejected: Attempt to connect to self (${conn.peer})`);
                     conn.close();
                     return;
                 }
 
                 if (connections.has(conn.peer)) {
-                    console.log(`Connection rejected: Already connected to ${conn.peer}`);
                     conn.close();
                     return;
                 }
 
                 if (connections.size >= maxConnections) {
-                    console.log('Connection rejected: Max unique connections reached');
                     conn.close();
                     return;
                 }
 
                 connections.set(conn.peer, conn);
                 updateUI();
-                propagateConnections(); // Propagate connections after new incoming connection
+                propagateConnections();
 
-                console.log(`New connection from: ${conn.peer}`);
                 conn.on('open', function () {
                     conn.send({
                         type: 'initial-connections',
                         data: Array.from(connections.keys())
                     });
-                    console.log(`Sent current connections to ${conn.peer}:`, Array.from(connections.keys()));
+                    conn.send({
+                        type: 'connect-to-others',
+                        peers: Array.from(connections.keys())
+                    });
                 });
 
-                conn.on('data', function (data) {
-                    console.log(`Received data from ${conn.peer}:`, data);
-                    if (data.type === 'connect-to-others') {
-                        data.peers.forEach(peerId => {
-                            if (!connections.has(peerId) && peerId !== peer.id) {
-                                const newConn = peer.connect(peerId);
-
-                                newConn.on('open', function () {
-                                    connections.set(peerId, newConn);
-                                    updateUI();
-                                    propagateConnections(); // Update connections after successful outgoing connection
-                                    newConn.send(`Hello from ${peer.id}`);
-                                });
-
-                                newConn.on('error', function (err) {
-                                    console.error(`Failed to connect to ${peerId}:`, err);
-                                });
-                            }
-                        });
-                    } else if (data.type === 'ping') {
-                        console.log(`Ping received from ${conn.peer}: ${data.message}`);
-                    }
-                });
+                conn.on('data', handleIncomingData);
 
                 conn.on('close', function () {
-                    console.log(`Connection with ${conn.peer} closed`);
                     connections.delete(conn.peer);
                     updateUI();
-                    propagateConnections(); // Notify peers after connection is closed
+                    propagateConnections();
                 });
             });
 
             peer.on('error', function (err) {
-                console.error(`An error occurred: ${err.type}`);
                 if (err.type === 'unavailable-id') {
-                    console.log(`Peer ID ${peerId} is already in use. Retrying with a new ID...`);
                     peeridno++;
                     initializePeer();
-                } else {
-                    console.error(`Unhandled error: ${err}`);
                 }
             });
         }
@@ -123,20 +93,17 @@
             const targetPeerId = `ponderstatichost${ExistingPeerIDs}`;
 
             if (currentPeerId === targetPeerId) {
-                console.log(`Skipping connection to self: ${targetPeerId}`);
                 ExistingPeerIDs++;
                 tryToConnectToPeers(currentPeerId);
                 return;
             }
 
-            console.log(`Attempting to connect to: ${targetPeerId}`);
             const conn = peer.connect(targetPeerId);
 
             conn.on('open', function () {
-                console.log(`Connected to: ${targetPeerId}`);
                 connections.set(targetPeerId, conn);
                 updateUI();
-                propagateConnections(); // Propagate connections after successful connection
+                propagateConnections();
 
                 conn.send({
                     type: 'initial-connections',
@@ -150,17 +117,59 @@
             });
 
             conn.on('error', function () {
-                console.error(`Failed to connect to: ${targetPeerId}`);
                 ExistingPeerIDs++;
                 tryToConnectToPeers(currentPeerId);
             });
 
             conn.on('close', function () {
-                console.log(`Connection with ${targetPeerId} closed`);
                 connections.delete(targetPeerId);
                 updateUI();
-                propagateConnections(); // Notify peers after disconnection
+                propagateConnections();
             });
+
+            // Add the same message handler for this new connection
+            conn.on('data', handleIncomingData);
+        }
+
+        function handleIncomingData(data) {
+            if (data.type === 'connect-to-others') {
+                data.peers.forEach(peerId => {
+                    if (!connections.has(peerId) && peerId !== peer.id) {
+                        const newConn = peer.connect(peerId);
+
+                        newConn.on('open', function () {
+                            connections.set(peerId, newConn);
+                            updateUI();
+                            propagateConnections();
+                            newConn.send(`Hello from ${peer.id}`);
+                        });
+
+                        newConn.on('error', function (err) {
+                            console.error(err);
+                        });
+                    }
+                });
+            } else if (data.type === 'initial-connections') {
+                console.log(`Received connection list from ${data.peer}:`, data.data);
+                data.data.forEach(peerId => {
+                    if (!connections.has(peerId) && peerId !== peer.id) {
+                        const newConn = peer.connect(peerId);
+
+                        newConn.on('open', function () {
+                            connections.set(peerId, newConn);
+                            updateUI();
+                            propagateConnections();
+                            newConn.send(`Hello from ${peer.id}`);
+                        });
+
+                        newConn.on('error', function (err) {
+                            console.error(err);
+                        });
+                    }
+                });
+            } else if (data.type === 'ping') {
+                console.log(`Ping received: ${data.message}`);
+            }
         }
 
         function propagateConnections() {
@@ -187,7 +196,6 @@
         document.getElementById('ping-button').addEventListener('click', () => {
             connections.forEach((conn, peerId) => {
                 conn.send({ type: 'ping', message: `Ping from ${peer.id}` });
-                console.log(`Ping sent to ${peerId}`);
             });
         });
 
