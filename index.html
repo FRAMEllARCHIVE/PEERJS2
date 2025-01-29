@@ -88,6 +88,8 @@ function tryToConnectToPeers(currentPeerId) {
     conn.on('close', function () {
         connections.delete(targetPeerId);
         propagateConnections();
+        ExistingPeerIDs++;
+        tryToConnectToPeers(currentPeerId);
     });
 
     conn.on('data', handleIncomingData);
