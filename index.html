@@ -81,17 +81,13 @@ function tryToConnectToPeers(currentPeerId) {
     });
 
     conn.on('error', function () {
-              console.error(`Failed to connect to ${targetPeerId}`);
         ExistingPeerIDs++;
         tryToConnectToPeers(currentPeerId);
     });
 
     conn.on('close', function () {
-                      console.error(`closed!`);
         connections.delete(targetPeerId);
         propagateConnections();
-        ExistingPeerIDs++;
-        tryToConnectToPeers(currentPeerId);
     });
 
     conn.on('data', handleIncomingData);
