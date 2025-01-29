@@ -25,11 +25,12 @@ peer.on('open', function (id) {
     console.log(`Peer started with ID: ${id}`);
     
     let connectInterval = setInterval(function() {
-        ExistingPeerIDs++;
+
         tryToConnectToPeers(id);
+        ExistingPeerIDs++;
         propagateConnections();
         
-        if (connections.size <= 0) {
+        if (connections.size < 0) {
             clearInterval(connectInterval);
         }
     }, 888);
