@@ -81,6 +81,7 @@ function tryToConnectToPeers(currentPeerId) {
     });
 
     conn.on('error', function () {
+              console.error(`Failed to connect to ${targetPeerId}`);
         ExistingPeerIDs++;
         tryToConnectToPeers(currentPeerId);
     });
