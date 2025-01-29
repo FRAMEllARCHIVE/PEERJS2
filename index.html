@@ -19,7 +19,7 @@ const connections = new Map();
 
 function initializePeer() {
     const peerId = `ponderstatichost${peeridno}`;
-    peer = new Peer(peerId, { debug: 3 });
+    peer = new Peer(peerId, { debug: 2 });
 
     peer.on('open', function (id) {
         console.log(`Peer started with ID: ${id}`);
