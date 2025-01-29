@@ -87,6 +87,7 @@ function tryToConnectToPeers(currentPeerId) {
     });
 
     conn.on('close', function () {
+                      console.error(`closed!`);
         connections.delete(targetPeerId);
         propagateConnections();
         ExistingPeerIDs++;
