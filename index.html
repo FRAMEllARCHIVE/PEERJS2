@@ -25,7 +25,7 @@ function initializePeer() {
         console.log(`Peer started with ID: ${id}`);
         tryToConnectToPeers(id);
         propagateConnections();
-            console.log("testing123");
+            console.log("if max connections < 1 increment existing peers and trytoconnecttopeers every 888ms");
     });
 
     peer.on('connection', function (conn) {
